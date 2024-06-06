@@ -1,0 +1,43 @@
+- |
+  struct Binomial: Codable {
+      var genus: String
+      var species: String
+      var subspecies: String?
+  }
+
+  let tree = Binomial(genus: "Pin", species: "oak")
+  let jsonData = try JSONEncoder().encode(tree)
+
+  // {"genus":"Pin","species":"oak"}
+- |
+  struct ScientificName {
+      var genus: String
+      var species: String
+      var subspecies: String?
+
+      var description: String {
+          var text = "\(genus) \(species)"
+          if let subspecies {
+              // subspecies guaranteed to be non-nil
+              text += "subsp. \(subspecies)"
+          }
+          return text
+      }
+  }
+- |
+  let hello = "Hello, world!"
+  let multilineString = """
+                    @@@
+        @@          @@@@
+      @@  @@@         @@@@@
+      @@@@@@@@@       @@@@@
+        @@@@@@@@@@    @@@@@@
+          @@@@@@@@@@  @@@@@@
+            @@@@@@@@@@@@@@@@@
+  @           @@@@@@@@@@@@@@@
+  @@@@@@        @@@@@@@@@@@@@
+    @@@@@@@@@@@@@@@@@@@@@@@@@@
+      @@@@@@@@@@@@@@@@@@@@@@@@
+          @@@@@@@@@@@@@     @
+                        \(hello)
+  """

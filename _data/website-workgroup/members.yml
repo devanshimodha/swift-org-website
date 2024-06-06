@@ -1,0 +1,35 @@
+- name: Alexander Sandberg
+  github: alexandersandberg
+  affiliation:
+
+- name: Christopher Thielen
+  github: cthielen
+  affiliation: Apple
+
+- name: Dave Verwer
+  github: daveverwer
+  affiliation: Swift Package Index
+
+- name: Federico Bucchi
+  github: federicobucchi
+  affiliation: Apple
+  
+- name: James Dempsey
+  github: dempseyatgithub
+  affiliation:
+
+- name: Mishal Shah
+  github: shahmishal
+  affiliation: Apple
+
+- name: Paris Pittman
+  github: parispittman
+  affiliation: Apple, Core Team rep
+
+- name: Reda Lemeden
+  github: kaishin
+  affiliation:
+
+- name: Tim Condon
+  github: 0xTim
+  affiliation: Vapor

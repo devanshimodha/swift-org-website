@@ -1,6 +1,6 @@
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2022 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2024 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See http://swift.org/LICENSE.txt for license information
@@ -9,57 +9,40 @@
 // ===---------------------------------------------------------------------===//
 'use strict'
 
+const EVOLUTION_METADATA_URL = 'https://download.swift.org/swift-evolution/v1/evolution.json'
+const GITHUB_BASE_URL = 'https://github.com/'
+const REPO_PROPOSALS_BASE_URL = GITHUB_BASE_URL + 'apple/swift-evolution/blob/main/proposals'
+const UFF_INFO_URL = '/blog/using-upcoming-feature-flags/'
+
 /** Holds the primary data used on this page: metadata about Swift Evolution proposals. */
-var proposals
+let proposals
 
-/**
- * To be updated when proposals are confirmed to have been implemented
- * in a new language version.
- */
-var languageVersions = [
-  '2.2',
-  '3',
-  '3.0.1',
-  '3.1',
-  '4',
-  '4.1',
-  '4.2',
-  '5',
-  '5.1',
-  '5.2',
-  '5.3',
-  '5.4',
-  '5.5',
-  '5.5.2',
-  '5.6',
-  '5.7',
-  '5.8',
-  '5.9',
-  'Next'
-]
-
-/** 
- * Mapping of proposal ids to upcoming feature flags. 
- * Temporary until upcomingFeatureFlag property is returned in proposals.json. 
- */
-const upcomingFeatureFlags = new Map([
-  ['SE-0274', 'ConciseMagicFile'],
-  ['SE-0286', 'ForwardTrailingClosures'],
-  ['SE-0335', 'ExistentialAny'],
-  ['SE-0354', 'BareSlashRegexLiterals'],
-  ['SE-0384', 'ImportObjcForwardDeclarations']
-])
+/** Array of language versions in which proposals have been implemented. */
+let languageVersions
 
 /** Storage for the user's current selection of filters when filtering is toggled off. */
-var filterSelection = []
+let filterSelection = []
 
-var upcomingFeatureFlagFilterEnabled = false
+let upcomingFeatureFlagFilterEnabled = false
 
-var GITHUB_BASE_URL = 'https://github.com/'
-var REPO_PROPOSALS_BASE_URL = GITHUB_BASE_URL + 'apple/swift-evolution/blob/main/proposals'
-var UFF_INFO_URL = '/blog/using-upcoming-feature-flags/'
+/** Proposal state string constants */
+const State = Object.freeze({
+  awaitingReview: 'awaitingReview',
+  scheduledForReview: 'scheduledForReview',
+  activeReview: 'activeReview',
+  returnedForRevision: 'returnedForRevision',
+  withdrawn: 'withdrawn',
+  accepted: 'accepted',
+  acceptedWithRevisions: 'acceptedWithRevisions',
+  rejected: 'rejected',
+  implemented: 'implemented',
+  previewing: 'previewing',
+  error: 'error',
+})
 
 /**
+ * property names: Proposal state string constants
+ *
  * `name`: Mapping of the states in the proposals JSON to human-readable names.
  *
  * `shortName`:  Mapping of the states in the proposals JSON to short human-readable names.
@@ -68,71 +51,71 @@ var UFF_INFO_URL = '/blog/using-upcoming-feature-flags/'
  * `className`: Mapping of states in the proposals JSON to the CSS class names used
  * to manipulate and display proposals based on their status.
  *
- * `count`: Number of proposals that determine after all proposals is loaded
+ * `count`: Number of proposals with that state. Calculated after proposals are loaded.
  */
-var states = {
-  '.awaitingReview': {
+const states = {
+  [State.awaitingReview]: {
     name: 'Awaiting Review',
     shortName: 'Awaiting Review',
     className: 'awaiting-review',
     count: 0
   },
-  '.scheduledForReview': {
+  [State.scheduledForReview]: {
     name: 'Scheduled for Review',
     shortName: 'Scheduled',
     className: 'scheduled-for-review',
     count: 0
   },
-  '.activeReview': {
+  [State.activeReview]: {
     name: 'Active Review',
     shortName: 'Active Review',
     statusPrefix: 'In ',
     className: 'active-review',
     count: 0
   },
-  '.returnedForRevision': {
+  [State.returnedForRevision]: {
     name: 'Returned for Revision',
     shortName: 'Returned',
     className: 'returned-for-revision',
     count: 0
   },
-  '.withdrawn': {
+  [State.withdrawn]: {
     name: 'Withdrawn',
     shortName: 'Withdrawn',
     className: 'withdrawn',
     count: 0
   },
-  '.accepted': {
+  [State.accepted]: {
     name: 'Accepted',
     shortName: 'Accepted',
     className: 'accepted',
     count: 0
   },
-  '.acceptedWithRevisions': {
+  [State.acceptedWithRevisions]: {
     name: 'Accepted with revisions',
     shortName: 'Accepted',
     className: 'accepted-with-revisions',
     count: 0
   },
-  '.rejected': {
+  [State.rejected]: {
     name: 'Rejected',
     shortName: 'Rejected',
     className: 'rejected',
     count: 0
   },
-  '.implemented': {
+  [State.implemented]: {
     name: 'Implemented',
     shortName: 'Implemented',
     className: 'implemented',
     count: 0
   },
-  '.previewing': {
+  [State.previewing]: {
     name: 'Previewing',
     shortName: 'Previewing',
     className: 'previewing',
     count: 0
   },
-  '.error': {
+  [State.error]: {
     name: 'Error',
     shortName: 'Error',
     className: 'error',
@@ -147,20 +130,14 @@ function init() {
   var req = new window.XMLHttpRequest()
 
   req.addEventListener('load', function() {
-    proposals = JSON.parse(req.responseText)
-
+    let evolutionMetadata = JSON.parse(req.responseText)
+    proposals = evolutionMetadata.proposals
+    languageVersions = evolutionMetadata.implementationVersions
+    
     // Don't display malformed proposals
     proposals = proposals.filter(function (proposal) {
       return !proposal.errors
     })
-    
-    // Add upcomingFeatureFlag to proposal if present in mapping.
-    // Temporary until upcomingFeatureFlag property is returned in proposals.json. 
-    for (var proposal of proposals) {
-      if (upcomingFeatureFlags.has(proposal.id)) {
-        proposal.upcomingFeatureFlag = upcomingFeatureFlags.get(proposal.id)
-      }
-    }
 
     // Descending numeric sort based the numeric nnnn in a proposal ID's SE-nnnn
     proposals.sort(function compareProposalIDs (p1, p2) {
@@ -186,7 +163,7 @@ function init() {
   })
 
   document.querySelector('#proposals-count-number').innerHTML = 'Loading…'
-  req.open('get', 'https://download.swift.org/swift-evolution/proposals.json')
+  req.open('get', EVOLUTION_METADATA_URL)
   req.send()
 }
 
@@ -239,7 +216,7 @@ function determineNumberOfProposals(proposals) {
 
   // .acceptedWithRevisions proposals are combined in the filtering UI
   // with .accepted proposals.
-  states['.accepted'].count += states['.acceptedWithRevisions'].count
+  states[State.accepted].count += states[State.acceptedWithRevisions].count
 }
 
 /**
@@ -262,8 +239,8 @@ function renderSearchBar () {
   // .acceptedWithRevisions proposals are combined in the filtering UI
   // with .accepted proposals.
   var checkboxes = [
-    '.awaitingReview', '.scheduledForReview', '.activeReview', '.accepted',
-    '.previewing', '.implemented', '.returnedForRevision', '.rejected', '.withdrawn'
+    State.awaitingReview, State.scheduledForReview, State.activeReview, State.accepted,
+    State.previewing, State.implemented, State.returnedForRevision, State.rejected, State.withdrawn
   ].map(function (state) {
     var className = states[state].className
 
@@ -288,12 +265,12 @@ function renderSearchBar () {
 
   // The 'Implemented' filter selection gets an extra row of options if selected.
   var implementedCheckboxIfPresent = checkboxes.filter(function (cb) {
-    return cb.querySelector(`#filter-by-${states['.implemented'].className}`)
+    return cb.querySelector(`#filter-by-${states[State.implemented].className}`)
   })[0]
 
   if (implementedCheckboxIfPresent) {
     // Add an extra row of options to filter by language version
-    var versionRowHeader = html('h5', { id: 'version-options-label', className: 'hidden' }, 'Language Version')
+    var versionRowHeader = html('h5', { id: 'version-options-label', className: 'hidden' }, 'Swift Version')
     var versionRow = html('ul', { id: 'version-options', className: 'filter-list hidden' })
 
     var versionOptions = languageVersions.map(function (version) {
@@ -308,7 +285,7 @@ function renderSearchBar () {
           tabindex: '0',
           role: 'button',
           'for': 'filter-by-swift-' + _idSafeName(version)
-        }, 'Swift ' + version)
+        }, version)
       ])
     })
 
@@ -330,8 +307,8 @@ function renderProposals() {
   var proposalAttachPoint = article.querySelector('.proposals-list')
 
   var proposalPresentationOrder = [
-    '.awaitingReview', '.scheduledForReview', '.activeReview', '.accepted', '.acceptedWithRevisions',
-    '.previewing', '.implemented', '.returnedForRevision', '.rejected', '.withdrawn'
+    State.awaitingReview, State.scheduledForReview, State.activeReview, State.accepted, State.acceptedWithRevisions,
+    State.previewing, State.implemented, State.returnedForRevision, State.rejected, State.withdrawn
   ]
 
   proposalPresentationOrder.map(function (state) {
@@ -358,7 +335,7 @@ function renderProposals() {
                   target: "_blank",
                   className: "proposal-title",
                 },
-                [proposal.title]
+                [proposal.title.trim()]
               ),
             ]),
           ]),
@@ -368,20 +345,20 @@ function renderProposals() {
       var detailNodes = []
       detailNodes.push(renderAuthors(proposal.authors))
 
-      if (proposal.reviewManager.name) detailNodes.push(renderReviewManager(proposal.reviewManager))
+      if (proposal.reviewManagers.length > 0) detailNodes.push(renderReviewManagers(proposal.reviewManagers))
       if (proposal.trackingBugs) detailNodes.push(renderTrackingBugs(proposal.trackingBugs))
-      if (state === '.implemented') detailNodes.push(renderVersion(proposal.status.version))
-      if (state === '.previewing') detailNodes.push(renderPreview())
+      if (state === State.implemented) detailNodes.push(renderVersion(proposal.status.version))
+      if (state === State.previewing) detailNodes.push(renderPreview())
       if (proposal.implementation) detailNodes.push(renderImplementation(proposal.implementation))
-      if (proposal.upcomingFeatureFlag) detailNodes.push(renderUpcomingFeatureFlag(proposal.upcomingFeatureFlag))
-      if (state === '.acceptedWithRevisions') detailNodes.push(renderStatus(proposal.status))
+      if (proposal.upcomingFeatureFlag) detailNodes.push(renderUpcomingFeatureFlag(proposal.upcomingFeatureFlag.flag))
+      if (state === State.acceptedWithRevisions) detailNodes.push(renderStatus(proposal.status))
 
-      if (state === '.activeReview' || state === '.scheduledForReview') {
+      if (state === State.activeReview || state === State.scheduledForReview) {
         detailNodes.push(renderStatus(proposal.status))
         detailNodes.push(renderReviewPeriod(proposal.status))
       }
 
-      if (state === '.returnedForRevision') {
+      if (state === State.returnedForRevision) {
         detailNodes.push(renderStatus(proposal.status))
       }
 
@@ -400,34 +377,36 @@ function renderProposals() {
 
 /** Authors have a `name` and optional `link`. */
 function renderAuthors(authors) {
-  var authorNodes = authors.map(function (author) {
-    if (author.link.length > 0) {
-      return html('a', { href: author.link, target: '_blank' }, author.name)
-    } else {
-      return document.createTextNode(author.name)
-    }
-  })
-
-  authorNodes = _joinNodes(authorNodes, ', ')
-
   return html('div', { className: 'authors proposal-detail' }, [
     html('div', { className: 'proposal-detail-label' },
       authors.length > 1 ? 'Authors: ' : 'Author: '
     ),
-    html('div', { className: 'proposal-detail-value' }, authorNodes)
+    html('div', { className: 'proposal-detail-value' },
+      personNodesForPersonArray(authors))
   ])
 }
 
 /** Review managers have a `name` and optional `link`. */
-function renderReviewManager(reviewManager) {
-  return html('div', { className: 'review-manager proposal-detail' }, [
-    html('div', { className: 'proposal-detail-label' }, 'Review Manager: '),
-    html('div', { className: 'proposal-detail-value' }, [
-      reviewManager.link
-        ? html('a', { href: reviewManager.link, target: '_blank' }, reviewManager.name)
-        : reviewManager.name
-    ])
+function renderReviewManagers(reviewManagers) {
+  return html('div', { className: 'review-managers proposal-detail' }, [
+    html('div', { className: 'proposal-detail-label' },
+      reviewManagers.length > 1 ? 'Review Managers: ' : 'Review Manager: '
+    ),
+    html('div', { className: 'proposal-detail-value' }, 
+      personNodesForPersonArray(reviewManagers))
   ])
+}
+
+/** Create nodes for arrays of authors and review managers. */
+function personNodesForPersonArray(personArray) {
+  const personNodes = personArray.map(function (person) {
+    if (person.link.length > 0) {
+      return html('a', { href: person.link, target: '_blank' }, person.name)
+    }
+    return document.createTextNode(person.name)
+  })
+  
+  return _joinNodes(personNodes, ', ')
 }
 
 /** Tracking bugs linked in a proposal are updated via GitHub Issues. */
@@ -577,7 +556,7 @@ function addEventListeners() {
   var searchInput = document.querySelector('#search-filter')
 
   // Typing in the search field causes the filter to be reapplied.
-  searchInput.addEventListener('search', filterProposals)
+  searchInput.addEventListener('input', filterProposals)
 
   // Each of the individual statuses needs to trigger filtering as well
   ;[].forEach.call(document.querySelectorAll('.filter-list input'), function (element) {
@@ -772,7 +751,7 @@ function _searchProposals(filterText) {
   var searchableProperties = [
       ['id'],
       ['title'],
-      ['reviewManager', 'name'],
+      ['reviewManagers', 'name'],
       ['status', 'state'],
       ['status', 'version'],
       ['authors', 'name'],
@@ -875,7 +854,7 @@ function _applyStatusFilter(matchingProposals) {
       matchingProposals = matchingProposals
         .filter(function (proposal) {
           return selectedStates.some(function (state) {
-            if (!(proposal.status.state === '.implemented')) return true // only filter among Implemented (N.N.N)
+            if (!(proposal.status.state === State.implemented)) return true // only filter among Implemented (N.N.N)
             if (state === 'swift-swift-Next' && proposal.status.version === 'Next') return true // special case
 
             var version = state.split(/\D+/).filter(function (s) { return s.length }).join('.')
@@ -921,17 +900,18 @@ function _setProposalVisibility(matchingProposals) {
  *   fragment --> `#?` parameter-value-list
  *   parameter-value-list --> parameter-value-pair | parameter-value-pair `&` parameter-value-list
  *   parameter-value-pair --> parameter `=` value
- *   parameter --> `proposal` | `status` | `version` | `search`
+ *   parameter --> `proposal` | `status` | `version` | `upcoming` | `search`
  *   value --> ** Any URL-encoded text. **
  *
  * For example:
  *   /#?proposal=SE-0180,SE-0123
  *   /#?status=rejected&version=3&search=access
  *
- * Four types of parameters are supported:
+ * Five types of parameters are supported:
  * - proposal: A comma-separated list of proposal IDs. Treated as an 'or' search.
- * - filter: A comma-separated list of proposal statuses to apply as a filter.
+ * - status: A comma-separated list of proposal statuses to apply as a filter.
  * - version: A comma-separated list of Swift version numbers to apply as a filter.
+ * - upcoming: A value of 'true' to apply the Upcoming Feature Flag filter.
  * - search: Raw, URL-encoded text used to filter by individual term.
  *
  * @param {string} fragment - A URI fragment to use as the basis for a search.
@@ -981,26 +961,29 @@ function _applyFragment(fragment) {
     document.querySelector('#search-filter').value = actions.search
   }
 
+  let hasVersionSelections = false
   if (actions.version.length) {
     var versionSelections = actions.version.map(function (version) {
       return document.querySelector('#filter-by-swift-' + _idSafeName(version))
     }).filter(function (version) {
       return !!version
     })
+    hasVersionSelections = versionSelections.length > 0
 
     versionSelections.forEach(function (versionSelection) {
       versionSelection.checked = true
     })
 
-    if (versionSelections.length) {
+    if (hasVersionSelections) {
       document.querySelector(
-        '#filter-by-' + states['.implemented'].className
+        '#filter-by-' + states[State.implemented].className
       ).checked = true
     }
   }
 
   // Track this state specifically for toggling the version panel
   var implementedSelected = false
+  let hasStatusSelections = false
 
   // Update the filter selections in the nav
   if (actions.status.length) {
@@ -1012,12 +995,13 @@ function _applyFragment(fragment) {
       if (!stateName) return // fragment contains a nonexistent state
       var state = states[stateName]
 
-      if (stateName === '.implemented') implementedSelected = true
+      if (stateName === State.implemented) implementedSelected = true
 
       return document.querySelector('#filter-by-' + state.className)
     }).filter(function (status) {
       return !!status
     })
+    hasStatusSelections = statusSelections.length > 0
 
     statusSelections.forEach(function (statusSelection) {
       statusSelection.checked = true
@@ -1025,7 +1009,7 @@ function _applyFragment(fragment) {
   }
 
   // The version panel needs to be activated if any are specified
-  if (actions.version.length || implementedSelected) {
+  if (hasVersionSelections || implementedSelected) {
     ;['#version-options', '#version-options-label'].forEach(function (selector) {
       document.querySelector('.filter-options')
         .querySelector(selector).classList
@@ -1034,7 +1018,7 @@ function _applyFragment(fragment) {
   }
 
   // Specifying any filter in the fragment should activate the filters in the UI
-  if (actions.version.length || actions.status.length) {
+  if (hasVersionSelections || hasStatusSelections) {
     toggleFilterPanel()
     toggleStatusFiltering()
   }
@@ -1084,7 +1068,7 @@ function _updateURIFragment() {
   // .implemented is redundant if any specific implementation versions are selected.
   if (actions.version.length) {
     statuses = statuses.filter(function (status) {
-      return status !== states['.implemented'].className
+      return status !== states[State.implemented].className
     })
   }
 
@@ -1194,9 +1178,9 @@ function addNumberToState (state, count) {
 */
 function descriptionForSelectedStatuses(selectedOptions) {
   let allStateOptions = [
-      '.awaitingReview', '.scheduledForReview', '.activeReview', '.accepted',
-      '.previewing', '.implemented', '.returnedForRevision', '.rejected', '.withdrawn'
-   ]
+    State.awaitingReview, State.scheduledForReview, State.activeReview, State.accepted,
+    State.previewing, State.implemented, State.returnedForRevision, State.rejected, State.withdrawn
+  ]
   let selectedCount = selectedOptions.length
   let totalCount = allStateOptions.length
   let ALL_EXCEPT_MAX_COUNT = 3
